@@ -8,8 +8,10 @@ const GUILD_ID = process.env.GUILD_ID;
 const CATEGORY_ID = process.env.CATEGORY_ID || null;
 
 app.post('/ghl-webhook', async (req, res) => {
-    const { name, email } = req.body;
-    const channelName = name.toLowerCase().replace(/[^a-z0-9]/g, '-');
+    const { firstName, lastName, email } = req.body;
+    const fullName = `${firstName} ${lastName}`.trim();
+    const channelName = fullName.toLowerCase().replace(/[^a-z0-9]/g, '-');
+
 
     try {
         const channelRes = await axios.post(
