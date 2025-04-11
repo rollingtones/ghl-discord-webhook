@@ -9,15 +9,19 @@ const GUILD_ID = process.env.GUILD_ID;
 const CATEGORY_ID = process.env.CATEGORY_ID || null;
 
 app.post('/ghl-webhook', async (req, res) => {
-    // 👇 This logs the actual data received from GoHighLevel
+    // 🔍 Show the full webhook payload
     console.log('Incoming webhook data:', req.body);
 
-    // Try both combined and fallback options
-    const { firstName, lastName, name, email } = req.body;
+    // ✅ Pull data from customData object
+    const { firstName = '', lastName = '', email = '' } = req.body.customData || {};
 
-    // Use fullName logic based on what’s available
-    const fullName = name || `${firstName || ''} ${lastName || ''}`.trim();
+    const fullName = `${firstName} ${lastName}`.trim();
     const channelName = fullName.toLowerCase().replace(/[^a-z0-9]/g, '-');
+
+    if (!channelName) {
+        console.error('Channel name is invalid:', channelName);
+        return res.status(400).send('Invalid channel name');
+    }
 
     try {
         const channelResponse = await axios.post(
