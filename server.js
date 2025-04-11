@@ -12,7 +12,7 @@ const ADMIN_ROLE_ID = "1204175689612402688"; // Your Admin Role ID
 app.post('/ghl-webhook', async (req, res) => {
   console.log('Incoming webhook data:', req.body);
 
-  // Extract contact-level data
+  // Extract top-level fields
   const {
     contact_id: contactId,
     phone = '',
@@ -20,27 +20,37 @@ app.post('/ghl-webhook', async (req, res) => {
     last_name: lastNameRaw = ''
   } = req.body;
 
-  // Extract customData
+  // Extract customData fields
   const {
     firstName = '',
     lastName = '',
     email = '',
+    phone: phoneFromCustom = '',
+    companyName = '',
     GHL_RETURN_URL = ''
   } = req.body.customData || {};
 
-  // Fallbacks in case customData is missing names
+  // Fallbacks
   const safeFirstName = firstName || firstNameRaw || '';
   const safeLastName = lastName || lastNameRaw || '';
-  const fullName = `${safeFirstName} ${safeLastName}`.trim();
-  const channelName = fullName.toLowerCase().replace(/[^a-z0-9]/g, '-');
+  const safePhone = phoneFromCustom || phone || '';
+
+  // 👇 Create channel name: companyName-first-last
+  const rawChannelName = `${companyName}-${safeFirstName}-${safeLastName}`;
+  const channelName = rawChannelName
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, '-')   // Replace non-alphanum with -
+    .replace(/--+/g, '-')          // Remove double dashes
+    .replace(/^-+|-+$/g, '')       // Trim dashes from start/end
+    .substring(0, 100);            // Discord channel name limit
 
   if (!channelName) {
-    console.error('Channel name is invalid:', channelName);
+    console.error('❌ Channel name is invalid:', channelName);
     return res.status(400).send('Invalid channel name');
   }
 
   try {
-    // 1. Create the private Discord channel
+    // 1. Create the private channel
     const channelResponse = await axios.post(
       `https://discord.com/api/v10/guilds/${GUILD_ID}/channels`,
       {
@@ -49,14 +59,14 @@ app.post('/ghl-webhook', async (req, res) => {
         parent_id: CATEGORY_ID || undefined,
         permission_overwrites: [
           {
-            id: GUILD_ID, // @everyone
+            id: GUILD_ID,
             type: 0,
-            deny: "1024" // VIEW_CHANNEL
+            deny: "1024"
           },
           {
-            id: ADMIN_ROLE_ID, // Admin Role
+            id: ADMIN_ROLE_ID,
             type: 0,
-            allow: "1024" // VIEW_CHANNEL
+            allow: "1024"
           }
         ]
       },
@@ -70,7 +80,7 @@ app.post('/ghl-webhook', async (req, res) => {
 
     const channelId = channelResponse.data.id;
 
-    // 2. Generate invite link
+    // 2. Create an invite link
     const inviteResponse = await axios.post(
       `https://discord.com/api/v10/channels/${channelId}/invites`,
       {
@@ -87,30 +97,31 @@ app.post('/ghl-webhook', async (req, res) => {
     );
 
     const inviteLink = `https://discord.gg/${inviteResponse.data.code}`;
-    console.log(`Send this to ${email}: ${inviteLink}`);
+    console.log(`✅ Invite link for ${email}: ${inviteLink}`);
 
-    // 3. Send webhook back to GHL
+    // 3. Send webhook back to GoHighLevel
     if (GHL_RETURN_URL) {
       await axios.post(GHL_RETURN_URL, {
         contactId,
         firstName: safeFirstName,
         lastName: safeLastName,
         email,
-        phone,
+        phone: safePhone,
+        companyName,
         inviteLink
       });
+
       console.log(`✅ Webhook sent to GHL: ${GHL_RETURN_URL}`);
     } else {
-      console.warn('⚠️ No GHL return URL provided — invite link not sent back.');
+      console.warn('⚠️ No GHL return URL provided — invite not sent back.');
     }
 
-    res.status(200).json({ message: 'Private channel created and invite sent to GHL', invite: inviteLink });
+    res.status(200).json({ message: 'Channel created and invite sent to GHL', invite: inviteLink });
 
   } catch (error) {
-    console.error('❌ Error:', error.response?.data || error.message);
+    console.error('❌ Discord Error:', error.response?.data || error.message);
     res.status(500).send('Something went wrong');
   }
 });
 
-// Start server
 app.listen(3000, () => console.log('🚀 Server is running on port 3000'));
